@@ -13,9 +13,9 @@ export async function GET() {
     );
   }
 
-  // Just return a basic ping for now
   return NextResponse.json({
     ok: true,
     message: "Firestore is configured",
   });
 }
+
