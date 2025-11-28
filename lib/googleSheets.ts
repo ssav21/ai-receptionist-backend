@@ -1,96 +1,92 @@
-// lib/googleSheets.ts
-import { google, sheets_v4 } from "googleapis";
+import { google } from "googleapis";
 
-let sheetsClient: sheets_v4.Sheets | null = null;
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
+const SHEET_TAB = "Bookings"; // Change to your tab name
 
-function getSheetsClient(): sheets_v4.Sheets | null {
-  if (sheetsClient) return sheetsClient;
+const auth = new google.auth.GoogleAuth({
+  credentials: {
+    type: "service_account",
+    project_id: process.env.GOOGLE_PROJECT_ID,
+    private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    client_email: process.env.GOOGLE_CLIENT_EMAIL,
+  },
+  scopes: SCOPES,
+});
 
-  const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
-  const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, "\n");
+const sheets = google.sheets("v4");
 
-  if (!clientEmail || !privateKey) {
-    console.warn(
-      "[googleSheets] Missing GOOGLE_SHEETS_CLIENT_EMAIL or GOOGLE_SHEETS_PRIVATE_KEY. Sheets integration disabled."
-    );
-    return null;
+// 👇 EDIT THESE INDEXES TO MATCH YOUR GOOGLE SHEET COLUMNS
+// If A=0, B=1, C=2, …
+export const COLUMN_INDEXES = {
+  name: 0,       // Column A
+  phone: 1,      // Column B
+  service: 2,    // Column C
+  date: 3,       // Column D
+  time: 4,       // Column E
+};
+
+// 👇 This is the range the assistant will READ from to check double bookings
+export const READ_RANGE = `${SHEET_TAB}!A:E`;
+
+// 👇 This is where NEW bookings will be APPENDED
+export const WRITE_RANGE = `${SHEET_TAB}!A:E`;
+
+// 🔍 CHECK IF A TIME SLOT IS TAKEN
+export async function isSlotTaken(date: string, time: string) {
+  const client = await auth.getClient();
+
+  const response = await sheets.spreadsheets.values.get({
+    auth: client,
+    spreadsheetId: process.env.GOOGLE_SHEETS_ID!,
+    range: READ_RANGE,
+  });
+
+  const rows = response.data.values || [];
+
+  // Skip header row
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+
+    const rowDate = row[COLUMN_INDEXES.date];
+    const rowTime = row[COLUMN_INDEXES.time];
+
+    if (rowDate === date && rowTime === time) {
+      return true;
+    }
   }
 
-  const auth = new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-
-  sheetsClient = google.sheets({ version: "v4", auth });
-  return sheetsClient;
+  return false;
 }
 
-const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
-const BOOKINGS_RANGE = process.env.GOOGLE_SHEETS_RANGE || "Bookings!A2:H";
-// If your tab isn't called "Bookings", change that string above
-
-// Check if a booking already exists for the same date + time
-export async function isSlotTaken(
-  requestedDate: string,
-  requestedTime: string
-): Promise<boolean> {
-  const sheets = getSheetsClient();
-  if (!sheets || !SPREADSHEET_ID) return false;
-
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: BOOKINGS_RANGE,
-  });
-
-  const rows = res.data.values || [];
-  const targetDate = (requestedDate || "").trim();
-  const targetTime = (requestedTime || "").trim();
-
-  // Columns: A Timestamp, B BusinessId, C Name, D Phone, E Service, F Date, G Time, H Status
-  return rows.some((row) => {
-    const rowDate = (row[5] || "").trim(); // column F
-    const rowTime = (row[6] || "").trim(); // column G
-    return rowDate === targetDate && rowTime === targetTime;
-  });
-}
-
-type AppendBookingParams = {
-  businessId: string;
+// ✍️ WRITE BOOKING INTO GOOGLE SHEET
+export async function appendBookingRow(booking: {
   name: string;
   phone: string;
   service: string;
   date: string;
   time: string;
-  status: string;
-};
-
-export async function appendBookingRow(params: AppendBookingParams) {
-  const sheets = getSheetsClient();
-  if (!sheets || !SPREADSHEET_ID) {
-    console.warn("[googleSheets] Sheets client not initialised; skipping append.");
-    return;
-  }
-
-  const nowIso = new Date().toISOString();
-
-  const values = [
-    [
-      nowIso,                // Timestamp
-      params.businessId,     // BusinessId
-      params.name,           // Name
-      params.phone,          // Phone
-      params.service,        // Service
-      params.date,           // Date
-      params.time,           // Time
-      params.status,         // Status
-    ],
-  ];
+}) {
+  const client = await auth.getClient();
 
   await sheets.spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID,
-    range: BOOKINGS_RANGE,
+    auth: client,
+    spreadsheetId: process.env.GOOGLE_SHEETS_ID!,
+    range: WRITE_RANGE,
     valueInputOption: "USER_ENTERED",
-    requestBody: { values },
+    requestBody: {
+      values: [
+        [
+          booking.name,
+          booking.phone,
+          booking.service,
+          booking.date,
+          booking.time,
+        ],
+      ],
+    },
   });
+
+  return true;
 }
+
+
