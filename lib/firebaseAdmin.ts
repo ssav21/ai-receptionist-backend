@@ -1,6 +1,5 @@
+// lib/firebaseAdmin.ts
 import admin from "firebase-admin";
-
-let app: admin.app.App | null = null;
 
 if (!admin.apps.length) {
   const projectId = process.env.FIREBASE_PROJECT_ID;
@@ -9,10 +8,10 @@ if (!admin.apps.length) {
 
   if (!projectId || !clientEmail || !privateKey) {
     console.warn(
-      "[firebaseAdmin] Missing Firebase env vars – Firestore will be disabled."
+      "[firebaseAdmin] Missing Firebase service account env vars. Firestore will NOT work."
     );
   } else {
-    app = admin.initializeApp({
+    admin.initializeApp({
       credential: admin.credential.cert({
         projectId,
         clientEmail,
@@ -20,9 +19,10 @@ if (!admin.apps.length) {
       }),
     });
   }
-} else {
-  app = admin.app();
 }
 
-export const db = app ? admin.firestore() : null;
-export type FirestoreDB = admin.firestore.Firestore;
+// Firestore instance (or null if not initialised)
+export const db = admin.apps.length ? admin.firestore() : null;
+
+// Export admin so other files (like route.ts) can use admin.firestore.FieldValue
+export { admin };
