@@ -4,6 +4,12 @@ import { db, admin } from "@/lib/firebaseAdmin";
 import twilio from "twilio";
 import { isSlotTaken, appendBookingRow } from "@/lib/googleSheets";
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
 type IncomingPayload = {
   message?: string;
   from?: string;
@@ -14,6 +20,14 @@ type IncomingPayload = {
   requestedDate?: string;
   requestedTime?: string;
 };
+
+// Preflight handler for browser tools (Hoppscotch, Postman web, etc.)
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: CORS_HEADERS,
+  });
+}
 
 // Twilio config
 const twilioSid = process.env.TWILIO_ACCOUNT_SID;
@@ -31,9 +45,9 @@ export async function POST(req: NextRequest) {
     body = (await req.json()) as IncomingPayload;
   } catch (err) {
     console.error("Failed to parse JSON body:", err);
-    return NextResponse.json(
-      { ok: false, error: "Invalid JSON" },
-      { status: 400 }
+    return new NextResponse(
+      JSON.stringify({ ok: false, error: "Invalid JSON" }),
+      { status: 400, headers: CORS_HEADERS }
     );
   }
 
@@ -51,9 +65,9 @@ export async function POST(req: NextRequest) {
   } = body || {};
 
   if (!message || !from) {
-    return NextResponse.json(
-      { ok: false, error: "Missing 'message' or 'from' in body" },
-      { status: 400 }
+    return new NextResponse(
+      JSON.stringify({ ok: false, error: "Missing 'message' or 'from' in body" }),
+      { status: 400, headers: CORS_HEADERS }
     );
   }
 
@@ -95,19 +109,19 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error("Error saving booking to Firestore:", err);
     }
+  } else {
+    console.warn("[/api/messages] Firestore DB not initialised.");
   }
 
   // 3) If slot is free, append to Google Sheet
   if (!slotTaken && requestedDate && requestedTime) {
     try {
       await appendBookingRow({
-        businessId,
         name: customerName,
         phone: from,
         service,
         date: requestedDate,
         time: requestedTime,
-        status: bookingStatus,
       });
     } catch (err) {
       console.error("Error appending booking to Google Sheet:", err);
@@ -153,27 +167,29 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error("Error sending SMS via Twilio:", err);
     }
+  } else {
+    console.warn("[/api/messages] Twilio not configured; skipping SMS.");
   }
 
-  return NextResponse.json(
-    {
+  return new NextResponse(
+    JSON.stringify({
       ok: true,
       message: "Booking request processed",
       bookingId,
       bookingStatus,
       slotTaken,
-    },
-    { status: 200 }
+    }),
+    { status: 200, headers: CORS_HEADERS }
   );
 }
 
 export async function GET() {
-  return NextResponse.json(
-    {
+  return new NextResponse(
+    JSON.stringify({
       ok: true,
       message: "GET /api/messages reached successfully",
-    },
-    { status: 200 }
+    }),
+    { status: 200, headers: CORS_HEADERS }
   );
 }
 
