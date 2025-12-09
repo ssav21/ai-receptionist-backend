@@ -1,28 +1,43 @@
 // lib/googleSheets.ts
 import { google } from "googleapis";
 
-const SHEET_ID = process.env.GOOGLE_SHEETS_BOOKINGS_ID;
-const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.replace(
-  /\\n/g,
-  "\n"
-);
+const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
+const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
+const RAW_GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
 
-const sheetsClient =
-  SHEET_ID && GOOGLE_CLIENT_EMAIL && GOOGLE_PRIVATE_KEY
-    ? google.sheets({
-        version: "v4",
-        auth: new google.auth.JWT(
-          GOOGLE_CLIENT_EMAIL,
-          undefined,
-          GOOGLE_PRIVATE_KEY,
-          ["https://www.googleapis.com/auth/spreadsheets"]
-        ),
-      })
-    : null;
+// Fix escaped newlines in the private key (common when using env vars)
+const GOOGLE_PRIVATE_KEY = RAW_GOOGLE_PRIVATE_KEY
+  ? RAW_GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n")
+  : undefined;
 
-// 🔹 IMPORTANT: include businessId here
-export type BookingRowInput = {
+if (!SPREADSHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
+  console.warn(
+    "[googleSheets] Missing one or more env vars: GOOGLE_SHEETS_ID, GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY"
+  );
+}
+
+function getSheetsClient() {
+  if (!SPREADSHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
+    throw new Error(
+      "[googleSheets] Cannot create Sheets client – missing env vars."
+    );
+  }
+
+  const auth = new google.auth.JWT({
+    email: GOOGLE_CLIENT_EMAIL,
+    key: GOOGLE_PRIVATE_KEY,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+
+  const sheets = google.sheets({
+    version: "v4",
+    auth,
+  });
+
+  return sheets;
+}
+
+export type AppendBookingRowInput = {
   businessId: string;
   name: string;
   phone: string;
@@ -32,25 +47,40 @@ export type BookingRowInput = {
   status: string;
 };
 
-export async function appendBookingRow(input: BookingRowInput) {
-  if (!sheetsClient || !SHEET_ID) {
-    console.warn("[googleSheets] Sheets client not initialised – skipping append.");
+/**
+ * Appends a booking row to the Google Sheet.
+ * Expected columns: Business ID | Name | Phone | Service | Date | Time | Status | Timestamp
+ */
+export async function appendBookingRow(input: AppendBookingRowInput) {
+  if (!SPREADSHEET_ID) {
+    console.warn(
+      "[googleSheets] GOOGLE_SHEETS_ID not set – skipping appendBookingRow."
+    );
     return;
   }
 
+  const sheets = getSheetsClient();
+
   const { businessId, name, phone, service, date, time, status } = input;
 
-  const values = [[businessId, name, phone, service, date, time, status]];
+  const timestamp = new Date().toISOString();
 
-  await sheetsClient.spreadsheets.values.append({
-    spreadsheetId: SHEET_ID,
-    range: "A:G",
+  const values = [
+    [businessId, name, phone, service, date, time, status, timestamp],
+  ];
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: "Bookings!A:H", // Adjust sheet name/range if needed
     valueInputOption: "USER_ENTERED",
     requestBody: {
       values,
     },
   });
+
+  console.log("[googleSheets] Appended booking row:", values);
 }
+
 
 
 
