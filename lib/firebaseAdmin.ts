@@ -1,20 +1,14 @@
 // lib/firebaseAdmin.ts
 import admin from "firebase-admin";
 
-if (!admin.apps.length) {
-  // Support both naming styles so it works with your existing env vars
-  const projectId =
-    process.env.FIREBASE_PROJECT_ID || process.env.PROJECT_ID;
-  const clientEmail =
-    process.env.FIREBASE_CLIENT_EMAIL || process.env.CLIENT_EMAIL;
-  const privateKey = (
-    process.env.FIREBASE_PRIVATE_KEY || process.env.PRIVATE_KEY
-  )?.replace(/\\n/g, "\n");
+const projectId = process.env.FIREBASE_PROJECT_ID;
+const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
 
+if (!admin.apps.length) {
   if (!projectId || !clientEmail || !privateKey) {
     console.warn(
-      "[firebaseAdmin] Missing Firebase env vars. Firestore will NOT work.",
-      { projectIdPresent: !!projectId, clientEmailPresent: !!clientEmail }
+      "[firebaseAdmin] Missing Firebase Admin env vars – Firestore will NOT be initialised."
     );
   } else {
     admin.initializeApp({
@@ -27,9 +21,9 @@ if (!admin.apps.length) {
   }
 }
 
-// Firestore instance (or null if not initialised)
-export const db = admin.apps.length ? admin.firestore() : null;
+// If envs are missing, this will be undefined – and route.ts logs a warning instead of crashing.
+export const db = admin.apps.length ? admin.firestore() : undefined;
 
-// Export admin so other files can use FieldValue, etc.
 export { admin };
+
 

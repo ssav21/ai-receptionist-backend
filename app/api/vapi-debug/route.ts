@@ -1,4 +1,3 @@
-// app/api/messages/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
 const CORS_HEADERS: Record<string, string> = {
@@ -11,35 +10,49 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
+export async function GET() {
+  return new NextResponse(
+    JSON.stringify({
+      ok: true,
+      marker: "VAPI-DEBUG-GET",
+      message: "GET /api/vapi-debug is working",
+    }),
+    {
+      status: 200,
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+}
+
 export async function POST(req: NextRequest) {
-  // Read the raw body first
   let rawBody = "";
   try {
     rawBody = await req.text();
   } catch (err) {
-    console.error("[/api/messages] Failed to read body as text:", err);
+    console.error("[/api/vapi-debug] Failed to read body:", err);
   }
 
-  console.log("[/api/messages] RAW BODY:", rawBody || "<empty>");
+  console.log("[/api/vapi-debug] RAW BODY:", rawBody || "<empty>");
 
   let parsed: any = {};
   if (rawBody) {
     try {
       parsed = JSON.parse(rawBody);
-    } catch (err) {
-      console.warn(
-        "[/api/messages] Body is not valid JSON. Returning it as raw string."
-      );
+    } catch {
       parsed = { rawBody };
     }
   }
 
-  console.log("[/api/messages] PARSED BODY:", parsed);
+  console.log("[/api/vapi-debug] PARSED BODY:", parsed);
 
   return new NextResponse(
     JSON.stringify({
       ok: true,
-      message: "Debug echo from /api/messages",
+      marker: "VAPI-DEBUG-POST",
+      message: "Debug echo from /api/vapi-debug",
       received: parsed,
     }),
     {
@@ -51,30 +64,3 @@ export async function POST(req: NextRequest) {
     }
   );
 }
-
-export async function GET() {
-  return new NextResponse(
-    JSON.stringify({
-      ok: true,
-      message: "GET /api/messages is working",
-    }),
-    {
-      status: 200,
-      headers: {
-        ...CORS_HEADERS,
-        "Content-Type": "application/json",
-      },
-    }
-  );
-}
-
-
-
-
-
-
-
-
-
-
-
