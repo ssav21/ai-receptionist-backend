@@ -1,23 +1,38 @@
 // lib/googleSheets.ts
 import { google } from "googleapis";
 
-const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
-const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
-const RAW_GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
+// Try multiple possible env names so we don't break existing config
+const SPREADSHEET_ID =
+  process.env.GOOGLE_SHEETS_ID ||
+  process.env.GOOGLE_SHEET_ID ||
+  process.env.SPREADSHEET_ID ||
+  process.env.SHEET_ID;
 
-// Fix escaped newlines in the private key (Vercel style)
+const GOOGLE_CLIENT_EMAIL =
+  process.env.GOOGLE_CLIENT_EMAIL ||
+  process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+
+const RAW_GOOGLE_PRIVATE_KEY =
+  process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+
+// Fix escaped newlines in the private key (Vercel / env var style)
 const GOOGLE_PRIVATE_KEY = RAW_GOOGLE_PRIVATE_KEY
   ? RAW_GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n")
   : undefined;
 
 if (!SPREADSHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
   console.warn(
-    "[googleSheets] Missing one or more env vars: GOOGLE_SHEETS_ID, GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY"
+    "[googleSheets] Missing one or more env vars: " +
+      JSON.stringify({
+        hasSpreadsheetId: !!SPREADSHEET_ID,
+        hasClientEmail: !!GOOGLE_CLIENT_EMAIL,
+        hasPrivateKey: !!GOOGLE_PRIVATE_KEY,
+      })
   );
 }
 
-// Use the older positional JWT constructor that was working before,
-// but cast to any so TypeScript stops complaining.
+// Use the older positional JWT constructor (which you had before),
+// but cast to any so TypeScript accepts it.
 function getSheetsClient() {
   if (!SPREADSHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
     throw new Error(
@@ -62,7 +77,7 @@ export type AppendBookingRowInput = {
 export async function appendBookingRow(input: AppendBookingRowInput) {
   if (!SPREADSHEET_ID) {
     console.warn(
-      "[googleSheets] GOOGLE_SHEETS_ID not set – skipping appendBookingRow."
+      "[googleSheets] SPREADSHEET_ID not set – skipping appendBookingRow."
     );
     return;
   }
@@ -81,8 +96,8 @@ export async function appendBookingRow(input: AppendBookingRowInput) {
   try {
     const res = await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      // 🔴 IMPORTANT: this must match your tab name
-      // If your sheet tab is "Sheet1", change this to "Sheet1!A:H"
+      // 🔴 IMPORTANT: change "Bookings" here if your tab name is different
+      // e.g. "Sheet1!A:H" if your tab is "Sheet1"
       range: "Bookings!A:H",
       valueInputOption: "USER_ENTERED",
       requestBody: { values },
@@ -94,7 +109,7 @@ export async function appendBookingRow(input: AppendBookingRowInput) {
     );
   } catch (err) {
     console.error("[googleSheets] Error appending booking row:", err);
-    // Don't crash the whole request – just log it
+    // We don't throw so that /api/messages still returns 200
   }
 }
 
