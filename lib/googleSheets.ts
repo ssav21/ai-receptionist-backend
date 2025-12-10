@@ -5,7 +5,7 @@ const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
 const RAW_GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
 
-// Fix escaped newlines in the private key (common when using env vars)
+// Fix escaped newlines in the private key (common with env vars)
 const GOOGLE_PRIVATE_KEY = RAW_GOOGLE_PRIVATE_KEY
   ? RAW_GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n")
   : undefined;
@@ -22,6 +22,11 @@ function getSheetsClient() {
       "[googleSheets] Cannot create Sheets client – missing env vars."
     );
   }
+
+  console.log("[googleSheets] Creating JWT client for Sheets", {
+    hasSpreadsheetId: !!SPREADSHEET_ID,
+    clientEmail: GOOGLE_CLIENT_EMAIL,
+  });
 
   const auth = new google.auth.JWT({
     email: GOOGLE_CLIENT_EMAIL,
@@ -49,7 +54,7 @@ export type AppendBookingRowInput = {
 
 /**
  * Appends a booking row to the Google Sheet.
- * Expected columns: Business ID | Name | Phone | Service | Date | Time | Status | Timestamp
+ * Columns: Business ID | Name | Phone | Service | Date | Time | Status | Timestamp
  */
 export async function appendBookingRow(input: AppendBookingRowInput) {
   if (!SPREADSHEET_ID) {
@@ -58,6 +63,8 @@ export async function appendBookingRow(input: AppendBookingRowInput) {
     );
     return;
   }
+
+  console.log("[googleSheets] appendBookingRow called with:", input);
 
   const sheets = getSheetsClient();
 
@@ -69,17 +76,26 @@ export async function appendBookingRow(input: AppendBookingRowInput) {
     [businessId, name, phone, service, date, time, status, timestamp],
   ];
 
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID,
-    range: "Bookings!A:H", // Adjust sheet name/range if needed
-    valueInputOption: "USER_ENTERED",
-    requestBody: {
-      values,
-    },
-  });
+  try {
+    const res = await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: "Bookings!A:H", // <-- tab must be named "Bookings"
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values,
+      },
+    });
 
-  console.log("[googleSheets] Appended booking row:", values);
+    console.log(
+      "[googleSheets] Appended booking row. Update response:",
+      JSON.stringify(res.data)
+    );
+  } catch (err) {
+    console.error("[googleSheets] Error appending booking row:", err);
+    throw err;
+  }
 }
+
 
 
 
