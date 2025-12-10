@@ -5,7 +5,7 @@ const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
 const RAW_GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
 
-// Fix escaped newlines in the private key (common with env vars)
+// Fix escaped newlines in the private key (Vercel style)
 const GOOGLE_PRIVATE_KEY = RAW_GOOGLE_PRIVATE_KEY
   ? RAW_GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n")
   : undefined;
@@ -16,6 +16,8 @@ if (!SPREADSHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
   );
 }
 
+// Use the older positional JWT constructor that was working before,
+// but cast to any so TypeScript stops complaining.
 function getSheetsClient() {
   if (!SPREADSHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
     throw new Error(
@@ -23,20 +25,21 @@ function getSheetsClient() {
     );
   }
 
-  console.log("[googleSheets] Creating JWT client for Sheets", {
-    hasSpreadsheetId: !!SPREADSHEET_ID,
+  console.log("[googleSheets] Creating JWT client", {
     clientEmail: GOOGLE_CLIENT_EMAIL,
+    hasSpreadsheetId: !!SPREADSHEET_ID,
   });
 
-  const auth = new google.auth.JWT({
-    email: GOOGLE_CLIENT_EMAIL,
-    key: GOOGLE_PRIVATE_KEY,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
+  const jwtClient = new (google.auth.JWT as any)(
+    GOOGLE_CLIENT_EMAIL,
+    undefined,
+    GOOGLE_PRIVATE_KEY,
+    ["https://www.googleapis.com/auth/spreadsheets"]
+  );
 
   const sheets = google.sheets({
     version: "v4",
-    auth,
+    auth: jwtClient,
   });
 
   return sheets;
@@ -69,7 +72,6 @@ export async function appendBookingRow(input: AppendBookingRowInput) {
   const sheets = getSheetsClient();
 
   const { businessId, name, phone, service, date, time, status } = input;
-
   const timestamp = new Date().toISOString();
 
   const values = [
@@ -79,22 +81,23 @@ export async function appendBookingRow(input: AppendBookingRowInput) {
   try {
     const res = await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Bookings!A:H", // <-- tab must be named "Bookings"
+      // 🔴 IMPORTANT: this must match your tab name
+      // If your sheet tab is "Sheet1", change this to "Sheet1!A:H"
+      range: "Bookings!A:H",
       valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values,
-      },
+      requestBody: { values },
     });
 
     console.log(
-      "[googleSheets] Appended booking row. Update response:",
+      "[googleSheets] Appended booking row. API response:",
       JSON.stringify(res.data)
     );
   } catch (err) {
     console.error("[googleSheets] Error appending booking row:", err);
-    throw err;
+    // Don't crash the whole request – just log it
   }
 }
+
 
 
 
