@@ -3,12 +3,7 @@ import { google } from "googleapis";
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
-const RAW_GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
-
-// Fix escaped newlines in the private key (Vercel-style env)
-const GOOGLE_PRIVATE_KEY = RAW_GOOGLE_PRIVATE_KEY
-  ? RAW_GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n")
-  : undefined;
+const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
 
 if (!SPREADSHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
   console.warn(
