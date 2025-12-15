@@ -39,9 +39,6 @@ function buildSlotId(businessId: string, date: string, time: string) {
 }
 
 export async function POST(req: NextRequest) {
-  // ─────────────────────────────────────────────
-  // 1) Read body safely (never 400 on missing/invalid JSON)
-  // ─────────────────────────────────────────────
   let rawBody = "";
   let body: IncomingPayload = {};
 
@@ -58,7 +55,7 @@ export async function POST(req: NextRequest) {
       body = JSON.parse(rawBody) as IncomingPayload;
     } catch (err) {
       console.warn(
-        "[/api/messages] Body is not valid JSON, continuing with empty object.",
+        "[/api/messages] Body not valid JSON, continuing with empty object.",
         err
       );
       body = {};
@@ -67,7 +64,6 @@ export async function POST(req: NextRequest) {
 
   console.log("[/api/messages] PARSED BODY:", body);
 
-  // Destructure with safe defaults
   const {
     message = "",
     from = "",
@@ -85,10 +81,9 @@ export async function POST(req: NextRequest) {
   let bookingStatus: "booked" | "conflict" | "no_date_time" = "no_date_time";
   let slotTaken = false;
   let bookingId: string | null = null;
+  let sheetsError: string | null = null;
 
-  // ─────────────────────────────────────────────
-  // 2) Save booking in Firestore
-  // ─────────────────────────────────────────────
+  // ───────── 1) Firestore booking ─────────
   if (db) {
     try {
       if (requestedDate && requestedTime) {
@@ -146,9 +141,7 @@ export async function POST(req: NextRequest) {
     console.warn("[/api/messages] Firestore DB not initialised.");
   }
 
-  // ─────────────────────────────────────────────
-  // 3) Append to Google Sheet if suitable
-  // ─────────────────────────────────────────────
+  // ───────── 2) Google Sheets row ─────────
   if (!slotTaken && requestedDate && requestedTime) {
     try {
       await appendBookingRow({
@@ -160,8 +153,9 @@ export async function POST(req: NextRequest) {
         time: requestedTime,
         status: bookingStatus,
       });
-    } catch (err) {
-      console.error("Error appending booking to Google Sheet:", err);
+    } catch (err: any) {
+      sheetsError = err?.message || String(err);
+      console.error("[/api/messages] Sheets error:", sheetsError);
     }
   } else if (slotTaken) {
     console.log(
@@ -169,9 +163,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ─────────────────────────────────────────────
-  // 4) SMS notifications via Twilio (optional)
-  // ─────────────────────────────────────────────
+  // ───────── 3) Twilio SMS notifications ─────────
   if (twilioClient && twilioFrom && ownerPhone) {
     try {
       const baseText =
@@ -183,14 +175,12 @@ export async function POST(req: NextRequest) {
         `When: ${requestedDate || "?"} ${requestedTime || ""}\n` +
         `Message: "${message || ""}"`;
 
-      // Send to owner
       await twilioClient.messages.create({
         from: twilioFrom,
         to: ownerPhone,
         body: baseText,
       });
 
-      // Send to customer if we have their number and slot is not taken
       if (hasFrom && !slotTaken) {
         await twilioClient.messages.create({
           from: twilioFrom,
@@ -212,9 +202,7 @@ export async function POST(req: NextRequest) {
     console.warn("[/api/messages] Twilio not configured; skipping SMS.");
   }
 
-  // ─────────────────────────────────────────────
-  // 5) Always respond 200 OK to Vapi
-  // ─────────────────────────────────────────────
+  // ───────── 4) Response ─────────
   return new NextResponse(
     JSON.stringify({
       ok: true,
@@ -224,6 +212,8 @@ export async function POST(req: NextRequest) {
       slotTaken,
       hasFrom,
       hasMessage,
+      sheetsOk: !sheetsError,
+      sheetsError,
     }),
     {
       status: 200,
@@ -250,6 +240,7 @@ export async function GET() {
     }
   );
 }
+
 
 
 

@@ -1,38 +1,26 @@
 // lib/googleSheets.ts
 import { google } from "googleapis";
 
-// Try multiple possible env names so we don't break existing config
-const SPREADSHEET_ID =
-  process.env.GOOGLE_SHEETS_ID ||
-  process.env.GOOGLE_SHEET_ID ||
-  process.env.SPREADSHEET_ID ||
-  process.env.SHEET_ID;
+const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
+const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
+const RAW_GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
 
-const GOOGLE_CLIENT_EMAIL =
-  process.env.GOOGLE_CLIENT_EMAIL ||
-  process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-
-const RAW_GOOGLE_PRIVATE_KEY =
-  process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-
-// Fix escaped newlines in the private key (Vercel / env var style)
+// Fix escaped newlines in the private key (Vercel-style env)
 const GOOGLE_PRIVATE_KEY = RAW_GOOGLE_PRIVATE_KEY
   ? RAW_GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n")
   : undefined;
 
 if (!SPREADSHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
   console.warn(
-    "[googleSheets] Missing one or more env vars: " +
-      JSON.stringify({
-        hasSpreadsheetId: !!SPREADSHEET_ID,
-        hasClientEmail: !!GOOGLE_CLIENT_EMAIL,
-        hasPrivateKey: !!GOOGLE_PRIVATE_KEY,
-      })
+    "[googleSheets] Missing env vars:",
+    JSON.stringify({
+      hasSpreadsheetId: !!SPREADSHEET_ID,
+      hasClientEmail: !!GOOGLE_CLIENT_EMAIL,
+      hasPrivateKey: !!GOOGLE_PRIVATE_KEY,
+    })
   );
 }
 
-// Use the older positional JWT constructor (which you had before),
-// but cast to any so TypeScript accepts it.
 function getSheetsClient() {
   if (!SPREADSHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
     throw new Error(
@@ -45,6 +33,7 @@ function getSheetsClient() {
     hasSpreadsheetId: !!SPREADSHEET_ID,
   });
 
+  // Use older positional constructor, but cast to any so TS allows it
   const jwtClient = new (google.auth.JWT as any)(
     GOOGLE_CLIENT_EMAIL,
     undefined,
@@ -61,7 +50,7 @@ function getSheetsClient() {
 }
 
 export type AppendBookingRowInput = {
-  businessId: string;
+  businessId: string; // still passed in, but not written to sheet
   name: string;
   phone: string;
   service: string;
@@ -71,8 +60,8 @@ export type AppendBookingRowInput = {
 };
 
 /**
- * Appends a booking row to the Google Sheet.
- * Columns: Business ID | Name | Phone | Service | Date | Time | Status | Timestamp
+ * Appends a booking row to the "Bookings" sheet.
+ * Columns: Name | Phone | Service | Date | Time | Status
  */
 export async function appendBookingRow(input: AppendBookingRowInput) {
   if (!SPREADSHEET_ID) {
@@ -86,32 +75,24 @@ export async function appendBookingRow(input: AppendBookingRowInput) {
 
   const sheets = getSheetsClient();
 
-  const { businessId, name, phone, service, date, time, status } = input;
-  const timestamp = new Date().toISOString();
+  const { name, phone, service, date, time, status } = input;
 
-  const values = [
-    [businessId, name, phone, service, date, time, status, timestamp],
-  ];
+  const values = [[name, phone, service, date, time, status]];
 
-  try {
-    const res = await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      // 🔴 IMPORTANT: change "Bookings" here if your tab name is different
-      // e.g. "Sheet1!A:H" if your tab is "Sheet1"
-      range: "Bookings!A:H",
-      valueInputOption: "USER_ENTERED",
-      requestBody: { values },
-    });
+  const res = await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    // 🔴 Tab name MUST be exactly "Bookings" (which your screenshot shows)
+    range: "Bookings!A:F",
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values },
+  });
 
-    console.log(
-      "[googleSheets] Appended booking row. API response:",
-      JSON.stringify(res.data)
-    );
-  } catch (err) {
-    console.error("[googleSheets] Error appending booking row:", err);
-    // We don't throw so that /api/messages still returns 200
-  }
+  console.log(
+    "[googleSheets] Appended booking row. API response:",
+    JSON.stringify(res.data)
+  );
 }
+
 
 
 
