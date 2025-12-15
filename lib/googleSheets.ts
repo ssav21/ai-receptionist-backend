@@ -1,96 +1,92 @@
 // lib/googleSheets.ts
 import { google } from "googleapis";
 
-// Accept a few common env var names to avoid mismatches
 const SPREADSHEET_ID =
-  process.env.GOOGLE_SHEETS_ID ||
-  process.env.GOOGLE_SHEET_ID ||
-  process.env.SPREADSHEET_ID ||
-  process.env.SHEET_ID;
+  process.env.GOOGLE_SHEETS_ID;
 
+// Support BOTH env var naming conventions (Option A + Option B)
 const GOOGLE_CLIENT_EMAIL =
   process.env.GOOGLE_CLIENT_EMAIL ||
-  process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
 
 const GOOGLE_PRIVATE_KEY =
-  process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  process.env.GOOGLE_PRIVATE_KEY ||
+  process.env.GOOGLE_SHEETS_PRIVATE_KEY;
 
-function missingEnvError() {
-  const details = {
-    hasSpreadsheetId: !!SPREADSHEET_ID,
-    hasClientEmail: !!GOOGLE_CLIENT_EMAIL,
-    hasPrivateKey: !!GOOGLE_PRIVATE_KEY,
-    // show which key name is being used (helps debugging)
-    spreadsheetIdVar:
-      process.env.GOOGLE_SHEETS_ID
-        ? "GOOGLE_SHEETS_ID"
-        : process.env.GOOGLE_SHEET_ID
-        ? "GOOGLE_SHEET_ID"
-        : process.env.SPREADSHEET_ID
-        ? "SPREADSHEET_ID"
-        : process.env.SHEET_ID
-        ? "SHEET_ID"
-        : "NONE",
+// Debug helper (safe – does NOT log secrets)
+function envStatus() {
+  return {
+    hasSpreadsheetId: Boolean(SPREADSHEET_ID),
+    hasClientEmail: Boolean(GOOGLE_CLIENT_EMAIL),
+    hasPrivateKey: Boolean(GOOGLE_PRIVATE_KEY),
+    spreadsheetIdVar: SPREADSHEET_ID ? "GOOGLE_SHEETS_ID" : "NONE",
     clientEmailVar: process.env.GOOGLE_CLIENT_EMAIL
       ? "GOOGLE_CLIENT_EMAIL"
-      : process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
-      ? "GOOGLE_SERVICE_ACCOUNT_EMAIL"
+      : process.env.GOOGLE_SHEETS_CLIENT_EMAIL
+      ? "GOOGLE_SHEETS_CLIENT_EMAIL"
       : "NONE",
     privateKeyVar: process.env.GOOGLE_PRIVATE_KEY
       ? "GOOGLE_PRIVATE_KEY"
-      : process.env.GOOGLE_SERVICE_ACCOUNT_KEY
-      ? "GOOGLE_SERVICE_ACCOUNT_KEY"
+      : process.env.GOOGLE_SHEETS_PRIVATE_KEY
+      ? "GOOGLE_SHEETS_PRIVATE_KEY"
       : "NONE",
   };
-
-  return new Error(
-    `[googleSheets] Missing env vars: ${JSON.stringify(details)}`
-  );
 }
 
-function getSheetsClient() {
+function createSheetsClient() {
   if (!SPREADSHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
-    throw missingEnvError();
+    const status = envStatus();
+    throw new Error(
+      `[googleSheets] Missing env vars: ${JSON.stringify(status)}`
+    );
   }
 
-  // Positional JWT constructor (cast to any so TS doesn't complain)
-  const jwtClient = new (google.auth.JWT as any)(
-    GOOGLE_CLIENT_EMAIL,
-    undefined,
-    GOOGLE_PRIVATE_KEY,
-    ["https://www.googleapis.com/auth/spreadsheets"]
-  );
+  const auth = new google.auth.JWT({
+    email: GOOGLE_CLIENT_EMAIL,
+    key: GOOGLE_PRIVATE_KEY,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
 
-  return google.sheets({ version: "v4", auth: jwtClient });
+  return google.sheets({
+    version: "v4",
+    auth,
+  });
 }
 
-export type AppendBookingRowInput = {
-  businessId: string; // not written into your current sheet layout
+export async function appendBookingRow(input: {
+  businessId: string;
   name: string;
   phone: string;
   service: string;
   date: string;
   time: string;
   status: string;
-};
+}) {
+  const sheets = createSheetsClient();
 
-/**
- * Appends to tab: Bookings
- * Columns in your screenshot: Name | Phone | Service | Date | Time | Status
- */
-export async function appendBookingRow(input: AppendBookingRowInput) {
-  const sheets = getSheetsClient();
-
-  const { name, phone, service, date, time, status } = input;
-  const values = [[name, phone, service, date, time, status]];
+  const values = [
+    [
+      input.name,
+      input.phone,
+      input.service,
+      input.date,
+      input.time,
+      input.status,
+    ],
+  ];
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID!,
     range: "Bookings!A:F",
     valueInputOption: "USER_ENTERED",
-    requestBody: { values },
+    requestBody: {
+      values,
+    },
   });
+
+  return { ok: true };
 }
+
 
 
 
